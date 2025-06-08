@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YOLOv3 实时目标检测</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+  
+  <!-- Tailwind 配置 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6',
+            secondary: '#10B981',
+            danger: '#EF4444',
+            dark: '#1E293B',
+            light: '#F8FAFC'
+          },
+          fontFamily: {
+            inter: ['Inter', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .backdrop-blur-sm {
+        backdrop-filter: blur(4px);
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .transition-all-300 {
+        transition: all 0.3s ease;
+      }
+    }
+  </style>
+</head>
+<body class="font-inter bg-gradient-to-br from-dark to-gray-800 text-light min-h-screen flex flex-col">
+  <!-- 顶部导航栏 -->
+  <header class="bg-dark/80 backdrop-blur-sm border-b border-gray-700 sticky top-0 z-50">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <i class="fa fa-eye text-primary text-2xl"></i>
+        <h1 class="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">YOLOv3 检测</h1>
+      </div>
+      <button id="infoBtn" class="p-2 rounded-full hover:bg-gray-700 transition-all-300">
+        <i class="fa fa-info-circle text-gray-300"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- 主要内容区 -->
+  <main class="flex-grow container mx-auto px-4 py-6 flex flex-col items-center">
+    <!-- 加载状态提示 -->
+    <div id="loadingScreen" class="fixed inset-0 flex flex-col items-center justify-center bg-dark/90 z-50">
+      <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mb-4"></div>
+      <p id="loadingText" class="text-lg">正在加载模型...</p>
+    </div>
+
+    <!-- 检测区域 -->
+    <div class="relative w-full max-w-2xl mb-6">
+      <div class="aspect-video bg-gray-900 rounded-xl overflow-hidden shadow-2xl border border-gray-700 relative">
+        <video id="video" class="w-full h-full object-cover" autoplay muted playsinline></video>
+        <canvas id="canvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+      </div>
+      
+      <!-- 检测信息显示 -->
+      <div id="detectionInfo" class="absolute bottom-0 left-0 right-0 bg-dark/70 backdrop-blur-sm p-3 border-t border-gray-700 rounded-b-xl">
+        <div class="flex justify-between items-center">
+          <div>
+            <p id="statusText" class="text-sm text-gray-300">准备就绪</p>
+            <p id="fpsCounter" class="text-xs text-gray-400">FPS: --</p>
+          </div>
+          <div id="objectsCount" class="hidden bg-primary/20 text-primary px-2 py-1 rounded-full text-xs">
+            检测到: <span id="objectsCountValue">0</span> 个物体
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="w-full max-w-2xl bg-dark/50 backdrop-blur-sm border border-gray-700 rounded-xl p-4 shadow-lg">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <button id="startBtn" class="flex flex-col items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-lg p-3 transition-all-300 shadow-md hover:shadow-lg">
+          <i class="fa fa-play text-xl mb-1"></i>
+          <span class="text-sm">开始检测</span>
+        </button>
+        
+        <button id="stopBtn" class="flex flex-col items-center justify-center bg-danger hover:bg-danger/90 text-white rounded-lg p-3 transition-all-300 shadow-md hover:shadow-lg opacity-50 cursor-not-allowed">
+          <i class="fa fa-stop text-xl mb-1"></i>
+          <span class="text-sm">停止检测</span>
+        </button>
+        
+        <button id="switchCameraBtn" class="flex flex-col items-center justify-center bg-secondary hover:bg-secondary/90 text-white rounded-lg p-3 transition-all-300 shadow-md hover:shadow-lg">
+          <i class="fa fa-refresh text-xl mb-1"></i>
+          <span class="text-sm">切换摄像头</span>
+        </button>
+        
+        <button id="captureBtn" class="flex flex-col items-center justify-center bg-gray-700 hover:bg-gray-600 text-white rounded-lg p-3 transition-all-300 shadow-md hover:shadow-lg">
+          <i class="fa fa-camera text-xl mb-1"></i>
+          <span class="text-sm">截图</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 结果画廊 -->
+    <div id="resultsGallery" class="w-full max-w-2xl mt-8">
+      <h2 class="text-xl font-bold mb-4 text-gray-200">检测历史</h2>
+      <div id="capturesContainer" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div class="text-center text-gray-500 text-sm p-8 col-span-full">
+          <i class="fa fa-picture-o text-4xl mb-2 block"></i>
+          <p>捕获的检测结果将显示在这里</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 信息模态框 -->
+  <div id="infoModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden">
+    <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl transform transition-all duration-300 scale-95 opacity-0" id="modalContent">
+      <div class="flex justify-between items-start mb-4">
+        <h3 class="text-xl font-bold text-white">关于 YOLOv3 检测</h3>
+        <button id="closeModalBtn" class="text-gray-400 hover:text-white">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="text-gray-300 space-y-3">
+        <p>本应用使用 YOLOv3 模型进行实时目标检测，可以识别常见的 80 种物体。</p>
+        <p>使用说明：</p>
+        <ul class="list-disc pl-5 space-y-1 text-sm">
+          <li>点击"开始检测"按钮启动摄像头并开始检测</li>
+          <li>点击"停止检测"按钮停止检测</li>
+          <li>点击"切换摄像头"按钮在前置/后置摄像头间切换</li>
+          <li>点击"截图"按钮保存当前检测结果</li>
+        </ul>
+        <p class="text-xs text-gray-400 mt-4">注意：由于模型较大，首次加载可能需要一些时间。为获得最佳性能，建议在连接到 Wi-Fi 的情况下使用。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部信息栏 -->
+  <footer class="bg-dark/80 backdrop-blur-sm border-t border-gray-700 py-3 mt-8">
+    <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+      <p>YOLOv3 实时目标检测应用 &copy; 2025</p>
+    </div>
+  </footer>
+
+  <script>
+    // 全局变量
+    let model;
+    let video;
+    let canvas;
+    let ctx;
+    let isDetecting = false;
+    let stream = null;
+    let lastFrameTime = 0;
+    let frameCount = 0;
+    let fps = 0;
+    let usingFrontCamera = false;
+    let captures = [];
+    
+    // DOM 元素
+    const loadingScreen = document.getElementById('loadingScreen');
+    const loadingText = document.getElementById('loadingText');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const switchCameraBtn = document.getElementById('switchCameraBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const videoElement = document.getElementById('video');
+    const canvasElement = document.getElementById('canvas');
+    const statusText = document.getElementById('statusText');
+    const fpsCounter = document.getElementById('fpsCounter');
+    const objectsCount = document.getElementById('objectsCount');
+    const objectsCountValue = document.getElementById('objectsCountValue');
+    const infoBtn = document.getElementById('infoBtn');
+    const infoModal = document.getElementById('infoModal');
+    const modalContent = document.getElementById('modalContent');
+    const closeModalBtn = document.getElementById('closeModalBtn');
+    const capturesContainer = document.getElementById('capturesContainer');
+    
+    // 初始化
+    async function init() {
+      try {
+        // 加载 YOLOv3 模型
+        loadingText.textContent = "正在加载 YOLOv3 模型...";
+        model = await cocoSsd.load();
+        loadingText.textContent = "正在准备摄像头...";
+        
+        // 初始化视频和画布
+        video = videoElement;
+        canvas = canvasElement;
+        ctx = canvas.getContext('2d');
+        
+        // 准备摄像头
+        await setupCamera();
+        
+        // 初始化完成
+        loadingScreen.classList.add('opacity-0');
+        setTimeout(() => {
+          loadingScreen.classList.add('hidden');
+        }, 300);
+        
+        statusText.textContent = "就绪 - 点击开始检测";
+        
+        // 绑定事件处理程序
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        switchCameraBtn.addEventListener('click', switchCamera);
+        captureBtn.addEventListener('click', captureDetection);
+        infoBtn.addEventListener('click', openInfoModal);
+        closeModalBtn.addEventListener('click', closeInfoModal);
+        
+      } catch (error) {
+        console.error('初始化失败:', error);
+        loadingText.textContent = "初始化失败，请刷新页面重试";
+        loadingText.classList.add('text-danger');
+      }
+    }
+    
+    // 设置摄像头
+    async function setupCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => {
+          track.stop();
+        });
+      }
+      
+      const constraints = {
+        video: {
+          facingMode: usingFrontCamera ? 'user' : 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        }
+      };
+      
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          resolve(video);
+        };
+      });
+    }
+    
+    // 开始检测
+    function startDetection() {
+      if (isDetecting) return;
+      
+      isDetecting = true;
+      startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      stopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      statusText.textContent = "正在检测...";
+      
+      requestAnimationFrame(detectFrame);
+      
+      // 开始计算 FPS
+      lastFrameTime = performance.now();
+      frameCount = 0;
+      
+      // 每秒钟更新一次 FPS 显示
+      setInterval(updateFPS, 1000);
+    }
+    
+    // 停止检测
+    function stopDetection() {
+      isDetecting = false;
+      startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      stopBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      statusText.textContent = "已停止 - 点击开始检测";
+      objectsCount.classList.add('hidden');
+    }
+    
+    // 切换摄像头
+    async function switchCamera() {
+      const wasDetecting = isDetecting;
+      if (wasDetecting) stopDetection();
+      
+      usingFrontCamera = !usingFrontCamera;
+      statusText.textContent = "切换摄像头中...";
+      
+      await setupCamera();
+      
+      if (wasDetecting) startDetection();
+      
+      statusText.textContent = wasDetecting ? "正在检测..." : "就绪 - 点击开始检测";
+    }
+    
+    // 捕获当前检测结果
+    function captureDetection() {
+      if (!isDetecting) {
+        showToast("请先开始检测");
+        return;
+      }
+      
+      // 创建捕获的图像
+      const captureCanvas = document.createElement('canvas');
+      captureCanvas.width = canvas.width;
+      captureCanvas.height = canvas.height;
+      const captureCtx = captureCanvas.getContext('2d');
+      
+      // 绘制视频帧和检测框
+      captureCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      captureCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height);
+      
+      // 创建图像数据 URL
+      const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.8);
+      
+      // 添加到捕获列表
+      captures.unshift({
+        id: Date.now(),
+        image: dataUrl,
+        objectsCount: objectsCountValue.textContent
+      });
+      
+      // 更新画廊
+      updateCapturesGallery();
+      
+      // 显示提示
+      showToast("已捕获检测结果");
+    }
+    
+    // 更新捕获画廊
+    function updateCapturesGallery() {
+      if (captures.length === 0) {
+        capturesContainer.innerHTML = `
+          <div class="text-center text-gray-500 text-sm p-8 col-span-full">
+            <i class="fa fa-picture-o text-4xl mb-2 block"></i>
+            <p>捕获的检测结果将显示在这里</p>
+          </div>
+        `;
+        return;
+      }
+      
+      capturesContainer.innerHTML = '';
+      
+      captures.forEach(capture => {
+        const captureCard = document.createElement('div');
+        captureCard.className = 'relative rounded-lg overflow-hidden border border-gray-700 group';
+        captureCard.innerHTML = `
+          <img src="${capture.image}" alt="检测结果截图" class="w-full aspect-video object-cover transition-transform duration-300 group-hover:scale-105">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end">
+            <div class="p-2 w-full">
+              <p class="text-xs text-white truncate">检测到 ${capture.objectsCount} 个物体</p>
+            </div>
+          </div>
+        `;
+        capturesContainer.appendChild(captureCard);
+      });
+    }
+    
+    // 检测每一帧
+    async function detectFrame() {
+      if (!isDetecting) return;
+      
+      // 计算 FPS
+      const now = performance.now();
+      const deltaTime = now - lastFrameTime;
+      lastFrameTime = now;
+      fps = Math.round(1000 / deltaTime);
+      frameCount++;
+      
+      try {
+        // 检测物体
+        const predictions = await model.detect(video);
+        
+        // 绘制检测结果
+        drawPredictions(predictions);
+        
+        // 更新物体计数
+        objectsCountValue.textContent = predictions.length;
+        if (predictions.length > 0) {
+          objectsCount.classList.remove('hidden');
+        } else {
+          objectsCount.classList.add('hidden');
+        }
+        
+      } catch (error) {
+        console.error('检测错误:', error);
+        statusText.textContent = "检测出错，请重试";
+        stopDetection();
+      }
+      
+      // 继续下一帧
+      requestAnimationFrame(detectFrame);
+    }
+    
+    // 绘制预测结果
+    function drawPredictions(predictions) {
+      // 清除画布
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // 设置字体
+      ctx.font = '14px sans-serif';
+      ctx.textBaseline = 'top';
+      
+      // 绘制每个预测结果
+      predictions.forEach(prediction => {
+        const [x, y, width, height] = prediction.bbox;
+        const label = `${prediction.class}: ${Math.round(prediction.score * 100)}%`;
+        
+        // 绘制边框
+        ctx.strokeStyle = getClassColor(prediction.class);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
+        
+        // 绘制标签背景
+        ctx.fillStyle = getClassColor(prediction.class);
+        const textWidth = ctx.measureText(label).width;
+        const textHeight = 16;
+        ctx.fillRect(x, y, textWidth + 8, textHeight + 4);
+        
+        // 绘制标签文本
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, x + 4, y + 4);
+      });
+    }
+    
+    // 更新 FPS 显示
+    function updateFPS() {
+      fpsCounter.textContent = `FPS: ${fps}`;
+    }
+    
+    // 打开信息模态框
+    function openInfoModal() {
+      infoModal.classList.remove('hidden');
+      setTimeout(() => {
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+      }, 10);
+    }
+    
+    // 关闭信息模态框
+    function closeInfoModal() {
+      modalContent.classList.remove('scale-100', 'opacity-100');
+      modalContent.classList.add('scale-95', 'opacity-0');
+      setTimeout(() => {
+        infoModal.classList.add('hidden');
+      }, 300);
+    }
+    
+    // 显示提示消息
+    function showToast(message) {
+      // 创建提示元素
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-dark/90 backdrop-blur-sm text-white px-4 py-2 rounded-lg shadow-lg z-50 opacity-0 transition-opacity duration-300';
+      toast.textContent = message;
+      
+      // 添加到页面
+      document.body.appendChild(toast);
+      
+      // 显示提示
+      setTimeout(() => {
+        toast.classList.remove('opacity-0');
+      }, 10);
+      
+      // 3秒后隐藏提示
+      setTimeout(() => {
+        toast.classList.add('opacity-0');
+        setTimeout(() => {
+          document.body.removeChild(toast);
+        }, 300);
+      }, 3000);
+    }
+    
+    // 根据类别获取颜色
+    function getClassColor(className) {
+      // 为常见类别定义特定颜色
+      const classColors = {
+        'person': '#3B82F6',      // 蓝色
+        'bicycle': '#10B981',     // 绿色
+        'car': '#F59E0B',         // 黄色
+        'motorcycle': '#EF4444',  // 红色
+        'bus': '#8B5CF6',         // 紫色
+        'truck': '#EC4899',       // 粉色
+        'bird': '#06B6D4',        // 青色
+        'cat': '#14B8A6',         // 蓝绿色
+        'dog': '#F97316',         // 橙色
+        'horse': '#6366F1',       // 靛蓝色
+        'sheep': '#A855F7',       // 深紫色
+        'cow': '#F43F5E',         // 玫瑰色
+        'elephant': '#84CC16',    // 黄绿色
+        'bear': '#FBBF24',        // 金色
+        'zebra': '#60A5FA',       // 浅蓝色
+        'giraffe': '#A78BFA',     // 淡紫色
+      };
+      
+      // 如果是已知类别，返回特定颜色，否则返回随机颜色
+      if (classColors[className]) {
+        return classColors[className];
+      } else {
+        // 为未知类别生成基于类名的确定性颜色
+        let hash = 0;
+        for (let i = 0; i < className.length; i++) {
+          hash = className.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = hash % 360;
+        return `hsl(${hue}, 70%, 50%)`;
+      }
+    }
+    
+    // 初始化应用
+    init();
+  </script>
+</body>
+</html>
+    
