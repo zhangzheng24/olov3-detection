@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=0.9, minimum-scale=0.9, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>YOLOv3 实时目标检测</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
@@ -77,27 +77,29 @@
       </div>
     </div>
 
-    <!-- 控制面板 -->
-    <div class="w-full max-w-none bg-dark/50 backdrop-blur-sm border border-gray-700 rounded-0 p-2 shadow-none flex flex-row overflow-x-auto">
-      <button id="startBtn" class="flex flex-col items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-lg p-2 transition-all-300 shadow-none mr-1">
-        <i class="fa fa-play text-base mb-0.5"></i>
-        <span class="text-xs">开始</span>
-      </button>
-      
-      <button id="stopBtn" class="flex flex-col items-center justify-center bg-danger hover:bg-danger/90 text-white rounded-lg p-2 transition-all-300 shadow-none mr-1 opacity-50 cursor-not-allowed">
-        <i class="fa fa-stop text-base mb-0.5"></i>
-        <span class="text-xs">停止</span>
-      </button>
-      
-      <button id="switchCameraBtn" class="flex flex-col items-center justify-center bg-secondary hover:bg-secondary/90 text-white rounded-lg p-2 transition-all-300 shadow-none mr-1">
-        <i class="fa fa-refresh text-base mb-0.5"></i>
-        <span class="text-xs">切换</span>
-      </button>
-      
-      <button id="captureBtn" class="flex flex-col items-center justify-center bg-gray-700 hover:bg-gray-600 text-white rounded-lg p-2 transition-all-300 shadow-none">
-        <i class="fa fa-camera text-base mb-0.5"></i>
-        <span class="text-xs">截图</span>
-      </button>
+    <!-- 控制面板 - 修复按钮布局 -->
+    <div class="w-full max-w-none bg-dark/50 backdrop-blur-sm border border-gray-700 rounded-0 p-2 shadow-none">
+      <div class="grid grid-cols-4 gap-2"> <!-- 使用网格布局确保按钮均匀分布 -->
+        <button id="startBtn" class="flex flex-col items-center justify-center bg-primary hover:bg-primary/90 text-white rounded-lg p-3 transition-all-300 shadow-none">
+          <i class="fa fa-play text-lg mb-1"></i>
+          <span class="text-xs">开始</span>
+        </button>
+        
+        <button id="stopBtn" class="flex flex-col items-center justify-center bg-danger hover:bg-danger/90 text-white rounded-lg p-3 transition-all-300 shadow-none opacity-50 cursor-not-allowed">
+          <i class="fa fa-stop text-lg mb-1"></i>
+          <span class="text-xs">停止</span>
+        </button>
+        
+        <button id="switchCameraBtn" class="flex flex-col items-center justify-center bg-secondary hover:bg-secondary/90 text-white rounded-lg p-3 transition-all-300 shadow-none">
+          <i class="fa fa-refresh text-lg mb-1"></i>
+          <span class="text-xs">切换</span>
+        </button>
+        
+        <button id="captureBtn" class="flex flex-col items-center justify-center bg-gray-700 hover:bg-gray-600 text-white rounded-lg p-3 transition-all-300 shadow-none">
+          <i class="fa fa-camera text-lg mb-1"></i>
+          <span class="text-xs">截图</span>
+        </button>
+      </div>
     </div>
 
     <!-- 结果画廊 -->
